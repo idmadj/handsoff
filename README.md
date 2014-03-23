@@ -1,0 +1,1 @@
+HandsOff is a configurable touchscreen toggle that sits in the notification area (the "tray").
