@@ -39,7 +39,7 @@ public static class DisableHardware
         public UInt32 cbSize;
         public Guid classGuid;
         public UInt32 devInst;
-        public IntPtr reserved;     // CHANGE #1 - was UInt32
+        public IntPtr reserved;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -99,6 +99,16 @@ string Enumerator,
       [In, Out] ref UInt32 RequiredSize
     );
 
+    [DllImport("setupapi.dll", SetLastError = true)]
+    static extern bool SetupDiGetDeviceInstanceId(
+      IntPtr DeviceInfoSet,
+      [In] ref SP_DEVINFO_DATA DeviceInfoData,
+      StringBuilder DeviceInstanceId,
+      UInt32 DeviceInstanceIdSize,
+      [In, Out] ref UInt32 RequiredSize
+    );
+
+
     static DisableHardware()
     {
         DisableHardware.DEVPKEY_Device_DeviceDesc = new DEVPROPKEY();
@@ -144,8 +154,11 @@ string Enumerator,
                     CheckError("No device found matching filter.", 0xcffff);
                 CheckError("SetupDiEnumDeviceInfo");
 
-                string devicepath = GetStringPropertyForDevice(info,
-                                           devdata, 1); // SPDRP_HARDWAREID
+                // By Hardware ID
+                //string devicepath = GetStringPropertyForDevice(info, devdata, 1); // SPDRP_HARDWAREID
+
+                // By Instance Path
+                string devicepath = GetDeviceInstanceId(info, devdata);
 
                 // Uncomment to print name/path
                 //Console.WriteLine(GetStringPropertyForDevice(info,
@@ -202,7 +215,7 @@ string Enumerator,
             uint buflen = 512;
             buffer = Marshal.AllocHGlobal((int)buflen);
             outsize = 0;
-            // CHANGE #2 - Use this instead of SetupDiGetDeviceProperty 
+            
             SetupDiGetDeviceRegistryPropertyW(
                 info,
                 ref devdata,
@@ -217,6 +230,28 @@ string Enumerator,
             if (errcode == ERROR_INVALID_DATA) return null;
             CheckError("SetupDiGetDeviceProperty", errcode);
             return Encoding.Unicode.GetString(lbuffer);
+        }
+        finally
+        {
+            if (buffer != IntPtr.Zero)
+                Marshal.FreeHGlobal(buffer);
+        }
+    }
+
+    private static string GetDeviceInstanceId(IntPtr info, SP_DEVINFO_DATA devdata)
+    {
+        uint outsize;
+        IntPtr buffer = IntPtr.Zero;
+        try
+        {
+            uint buflen = 512;
+            outsize = 0;
+            StringBuilder sb = new StringBuilder((int)buflen);
+            SetupDiGetDeviceInstanceId(info, ref devdata, sb, buflen, ref outsize);
+            int errcode = Marshal.GetLastWin32Error();
+            if (errcode == ERROR_INVALID_DATA) return null;
+            CheckError("SetupDiGetDeviceInstanceId", errcode);
+            return sb.ToString();
         }
         finally
         {
