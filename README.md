@@ -14,14 +14,15 @@ Simply left-click or tap on the hand icon in the tray and your touchscreen will 
 
 On your first run, HandsOff will try to automatically detect your touchscreen. If clicking the icon has no effect, right-click the icon then select 'Configuration...'. Under 'Controlled Device:', select the device you think corresponds to your touchscreen, then click 'OK'. Repeat the procedure until HandsOff properly toggles your touchscreen. If you tried all devices with no success, feel free to send me your device's instance path (check below for how to get this) and I'll try to make this work.
 
-This can also be used to toggle other devices, such as mice and keyboards (HandsOff only lists HID devices).
+This can also be used to toggle other devices, such as mice and keyboards (HandsOff only lists Human Interface Devices).
 
 Right-click the icon and select 'Quit' to quit (mindblowing, I know).
 
 
-Requirements
-============
- - Windows 8 or Windows Vista with .NET Framework 4.0 installed.
+Supported Platforms
+===================
+ - Windows 8
+ - Windows 7 or Vista with .NET Framework 4.0 installed.
 
 
 Getting your device's instance path
