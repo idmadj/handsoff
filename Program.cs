@@ -16,6 +16,9 @@ namespace handsoff
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+
+            //LeanDeploy.Check();
+
             Application.Run(new Main());
         }
     }

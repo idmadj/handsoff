@@ -24,13 +24,15 @@ namespace handsoff
         public Main()
         {
             /* TODO:
-             *  - Only show help balloon on first run
+             *  - Installer/Uninstaller
+             *  - Rework firstrun scenario
              *  - Device auto-detect
              *  - Launch on startup
-             *  - Installer/Uninstaller
+             *  - Move config to tray menu
              */
 
-            Application.ApplicationExit += new EventHandler(this.OnApplicationExit);
+            Application.ApplicationExit += OnApplicationExit;
+
             InitializeComponent();
             appIcon.Visible = true;
 
@@ -168,12 +170,6 @@ namespace handsoff
             }
         }
 
-        private void OnApplicationExit(object sender, EventArgs e)
-        {
-            //Cleanup so that the icon will be removed when the application is closed
-            appIcon.Visible = false;
-        }
-
         private void OnAppClick(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left) 
@@ -207,6 +203,12 @@ namespace handsoff
         private void OnOptionsCancel(object _e)
         {
            Properties.Settings.Default.Reload();
+        }
+
+        private void OnApplicationExit(object sender, EventArgs e)
+        {
+            //Cleanup so that the icon will be removed when the application is closed
+            appIcon.Visible = false;
         }
     }
 
