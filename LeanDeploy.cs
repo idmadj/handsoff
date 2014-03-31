@@ -1,4 +1,5 @@
 ﻿using IWshRuntimeLibrary;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -21,6 +22,24 @@ namespace handsoff
         public static event LDEvent BeforeInstall;
         public static event LDEvent AfterInstall;
         public static event LDEvent BeforeUninstall;
+
+        private static string assemblyName;
+        private static string executablePath;
+        private static string installFolder;
+        public static string installPath;
+
+        /* TODO
+         *  - Error catching
+         *  - Convert installPath to getter setter
+         */
+
+        static LeanDeploy()
+        {
+            assemblyName = Assembly.GetExecutingAssembly().GetName().Name;
+            executablePath = Assembly.GetExecutingAssembly().Location;
+            installFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Application.ProductName);
+            installPath = Path.Combine(installFolder, assemblyName + ".exe");
+        }
 
         public static void Check()
         {
@@ -71,17 +90,7 @@ namespace handsoff
         {
             get
             {
-                return false;
-            }
-        }
-
-        public static string installPath
-        {
-            get
-            {
-                // TODO: Combine path with that .NET function. Do it for all paths
-                // MainModule.FileName returns the launcher's filename
-                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Application.ProductName, Path.GetFileName(Process.GetCurrentProcess().MainModule.FileName));
+                return System.IO.File.Exists(installPath);
             }
         }
 
@@ -89,22 +98,22 @@ namespace handsoff
         {
             get
             {
-                return isInstalled && false;
+                return isInstalled && Path.Equals(executablePath, installPath);
             }
         }
 
         private static void AddExecutable()
         {
-            // Install executable in program files
+            Directory.CreateDirectory(installFolder);
+            System.IO.File.Copy(executablePath, installPath, true);
         }
 
         private static void RemoveExecutable()
         {
             KillExecutable();
 
-            // TODO: remove folder too
             ProcessStartInfo info = new ProcessStartInfo();
-            info.Arguments="/C choice /C Y /N /D Y /T 3 & Del " + installPath;
+            info.Arguments="/C choice /C Y /N /D Y /T 3 & rmdir \"" + installFolder + "\" /s /q";
             info.WindowStyle=ProcessWindowStyle.Hidden;
             info.CreateNoWindow=true;
             info.FileName="cmd.exe";
@@ -120,7 +129,7 @@ namespace handsoff
             string shortcutFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), Application.ProductName);
 
             WshShell shell = new WshShell();
-            //TODO: Create folder : (shortcutFolder)
+            Directory.CreateDirectory(shortcutFolder);
             IWshShortcut shortcut = shell.CreateShortcut(Path.Combine(shortcutFolder, Application.ProductName + ".lnk"));
             shortcut.Description = Application.ProductName;
             shortcut.TargetPath = installPath;
@@ -129,17 +138,36 @@ namespace handsoff
 
         private static void RemoveShortcut()
         {
-            // Delete(Environment.GetFolderPath(Environment.SpecialFolder.Programs) + "\\" + Application.ProductName)
+            string shortcutFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), Application.ProductName);
+
+            if (Directory.Exists(shortcutFolder)) 
+            {
+                Directory.Delete(shortcutFolder, true);
+            }
         }
 
         private static void AddUninstallEntry()
         {
-            
+            Version version = new Version(Application.ProductVersion);
+
+            RegistryKey registryKey = Registry.CurrentUser.CreateSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + Application.ProductName);
+
+            registryKey.SetValue("DisplayIcon", "\"" + installPath + "\"");
+            registryKey.SetValue("DisplayName", Application.ProductName);
+            registryKey.SetValue("DisplayVersion", version.Major + "." + version.Minor);
+            registryKey.SetValue("NoModify", 1, RegistryValueKind.DWord);
+            registryKey.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+            registryKey.SetValue("Publisher", Application.CompanyName);
+            registryKey.SetValue("UninstallString", "\"" + installPath + "\" uninstall");
+            registryKey.SetValue("VersionMajor", version.Major, RegistryValueKind.DWord);
+            registryKey.SetValue("VersionMinor", version.Minor, RegistryValueKind.DWord);
+
+            registryKey.Close();
         }
 
         private static void RemoveUninstallEntry()
         {
-
+            Registry.CurrentUser.DeleteSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + Application.ProductName, false);
         }
 
         private static void LaunchExecutable()
@@ -152,10 +180,11 @@ namespace handsoff
         {
             Process currentProcess = Process.GetCurrentProcess();
 
-            Process[] processes = Process.GetProcessesByName(currentProcess.ProcessName);
+            Process[] processes = Process.GetProcessesByName(assemblyName);
             foreach (Process process in processes)
             {
-                if (process != currentProcess) {
+                if (process.Id != currentProcess.Id)
+                {
                     process.Kill();
                 }
             }
@@ -163,7 +192,12 @@ namespace handsoff
 
         private static void RemoveSettings()
         {
-            //Delete Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Application.CompanyName)
+            string settingsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Application.CompanyName);
+
+            if (Directory.Exists(settingsFolder)) 
+            {
+                Directory.Delete(settingsFolder, true);
+            }
         }
     }
 }

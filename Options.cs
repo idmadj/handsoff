@@ -86,7 +86,6 @@ namespace handsoff
         {
             Properties.Settings defaultSettings = Properties.Settings.Default;
 
-            defaultSettings.launchOnStartup = checkBox1.Checked;
             defaultSettings.controlledDevice = comboBox1.SelectedValue.ToString();
         }
 

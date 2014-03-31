@@ -49,15 +49,12 @@
             // checkBox1
             // 
             this.checkBox1.AutoSize = true;
-            this.checkBox1.Checked = global::handsoff.Properties.Settings.Default.launchOnStartup;
-            this.checkBox1.DataBindings.Add(new System.Windows.Forms.Binding("Checked", global::handsoff.Properties.Settings.Default, "launchOnStartup", true, System.Windows.Forms.DataSourceUpdateMode.OnPropertyChanged));
-            this.checkBox1.Enabled = false;
             this.checkBox1.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.checkBox1.Location = new System.Drawing.Point(16, 89);
             this.checkBox1.Name = "checkBox1";
-            this.checkBox1.Size = new System.Drawing.Size(319, 24);
+            this.checkBox1.Size = new System.Drawing.Size(211, 24);
             this.checkBox1.TabIndex = 2;
-            this.checkBox1.Text = "Launch on system startup (coming soon!)";
+            this.checkBox1.Text = "Launch on system startup";
             this.checkBox1.UseVisualStyleBackColor = true;
             // 
             // button1

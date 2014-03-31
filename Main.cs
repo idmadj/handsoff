@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Win32;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -25,10 +26,12 @@ namespace handsoff
         {
             /* TODO:
              *  - Installer/Uninstaller
+             *  - Bind launchonstartup to options
              *  - Rework firstrun scenario
              *  - Device auto-detect
              *  - Launch on startup
              *  - Move config to tray menu
+             *  - Clear startup registry entry on uninstall
              */
 
             Application.ApplicationExit += OnApplicationExit;
@@ -209,6 +212,42 @@ namespace handsoff
         {
             //Cleanup so that the icon will be removed when the application is closed
             appIcon.Visible = false;
+        }
+
+
+
+        private bool launchOnStartup
+        {
+            get 
+            {
+                bool returnValue = false;
+                RegistryKey registryKey = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run");
+
+                if (registryKey.GetValue(Application.ProductName) != null)
+                {
+                    returnValue = true;
+                }
+
+                registryKey.Close();
+
+                return returnValue;
+            }
+
+            set 
+            {
+                RegistryKey registryKey = Registry.CurrentUser.CreateSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run");
+
+                if (value) 
+                {
+                    registryKey.SetValue(Application.ProductName, LeanDeploy.installPath);
+                } 
+                else 
+                {
+                    registryKey.DeleteValue(Application.ProductName, false);
+                }
+
+                registryKey.Close();
+            }
         }
     }
 

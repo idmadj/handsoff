@@ -14,11 +14,9 @@ namespace handsoff
         [STAThread]
         static void Main()
         {
+            LeanDeploy.Check();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-
-            //LeanDeploy.Check();
-
             Application.Run(new Main());
         }
     }
