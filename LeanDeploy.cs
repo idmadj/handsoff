@@ -31,6 +31,7 @@ namespace handsoff
         /* TODO
          *  - Error catching
          *  - Convert installPath to getter setter
+         *  - Uninstall confirmation MsgBox?
          */
 
         static LeanDeploy()

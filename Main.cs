@@ -1,6 +1,7 @@
 ﻿using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Text;
@@ -17,21 +18,21 @@ namespace handsoff
 
         private NotifyIcon appIcon;
         private ContextMenuStrip appMenu;
-        private ToolStripMenuItem optionsMenuItem;
+        private ToolStripMenuItem controlledDeviceMenuItem;
+        private ToolStripMenuItem launchOnStartupMenuItem;
+        private ToolStripMenuItem aboutMenuItem;
         private ToolStripMenuItem quitMenuItem;
-        private Options optionsForm;
         private List<Device> devices;
 
         public Main()
         {
             /* TODO:
-             *  - Installer/Uninstaller
-             *  - Bind launchonstartup to options
-             *  - Rework firstrun scenario
              *  - Device auto-detect
-             *  - Launch on startup
-             *  - Move config to tray menu
+             *  - Launch on startup (UAC)
+             *  - Rework firstrun scenario
              *  - Clear startup registry entry on uninstall
+             *  - Clear TrayIcon on uninstall
+             *  - Restore LeanDeploy
              */
 
             Application.ApplicationExit += OnApplicationExit;
@@ -58,31 +59,57 @@ namespace handsoff
         {
             appIcon = new NotifyIcon();
 
-            appIcon.BalloonTipClicked += OnBalloonClick;
-
             appIcon.Text = Application.ProductName;
             appIcon.MouseClick += OnAppClick;
 
             appMenu = new ContextMenuStrip();
-            optionsMenuItem = new ToolStripMenuItem();
+
+            controlledDeviceMenuItem = new ToolStripMenuItem();
+            launchOnStartupMenuItem = new ToolStripMenuItem();
+            aboutMenuItem = new ToolStripMenuItem();
             quitMenuItem = new ToolStripMenuItem();
             appMenu.SuspendLayout();
 
-            appMenu.Items.AddRange(new ToolStripItem[] { optionsMenuItem, quitMenuItem });
-            appMenu.Name = "appMenu";
+            appMenu.Items.AddRange(new ToolStripItem[] { controlledDeviceMenuItem, launchOnStartupMenuItem, aboutMenuItem, new ToolStripSeparator(), quitMenuItem });
 
-            optionsMenuItem.Name = "quitMenuItem";
-            optionsMenuItem.Text = "Configuration...";
-            optionsMenuItem.Click += new EventHandler(OnOptionsClick);
+            controlledDeviceMenuItem.Text = "Controlled device";
+            controlledDeviceMenuItem.DropDown.Opening += OnControlledDeviceOpening;
+            updateDevicesList();
 
-            quitMenuItem.Name = "quitMenuItem";
+            launchOnStartupMenuItem.Text = "Launch on startup";
+            launchOnStartupMenuItem.Checked = launchOnStartup;
+            launchOnStartupMenuItem.MouseDown += OnStartupClick;
+
+            aboutMenuItem.Text = "About...";
+            aboutMenuItem.MouseDown += OnAboutClick;
+
             quitMenuItem.Text = "Quit";
-            quitMenuItem.Click += new EventHandler(OnQuitClick);
+            quitMenuItem.MouseDown += OnQuitClick;
 
             appMenu.ResumeLayout(false);
             appIcon.ContextMenuStrip = appMenu;
 
             UpdateIcon();
+        }
+
+        private void updateDevicesList()
+        {
+            ListDevices();
+
+            controlledDeviceMenuItem.DropDown.Items.Clear();
+
+            foreach(Device device in devices) 
+            {
+                ToolStripMenuItem deviceMenuItem = new ToolStripMenuItem(device.name);
+                deviceMenuItem.Name = device.instancePath;
+                deviceMenuItem.MouseDown += OnDeviceClick;
+
+                if (device.instancePath == Properties.Settings.Default.controlledDevice) {
+                    deviceMenuItem.Checked = true;
+                }
+
+                controlledDeviceMenuItem.DropDown.Items.Add(deviceMenuItem);
+            }
         }
 
         private void ListDevices()
@@ -154,25 +181,6 @@ namespace handsoff
             return deviceEnabled;
         }
 
-        private void OpenOptions()
-        {
-            ListDevices();
-
-            if (optionsForm == null || Application.OpenForms[optionsForm.Name] == null)
-            {
-                optionsForm = new Options();
-                optionsForm.OKClicked += OnOptionsOK;
-                optionsForm.CancelClicked += OnOptionsCancel;
-                optionsForm.devices = devices;
-                optionsForm.selectedDevice = Properties.Settings.Default.controlledDevice;
-                optionsForm.Show();
-            }
-            else
-            {
-                optionsForm.Focus();
-            }
-        }
-
         private void OnAppClick(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left) 
@@ -182,30 +190,52 @@ namespace handsoff
             }
         }
 
-        private void OnOptionsClick(object sender, EventArgs e)
+        private void OnControlledDeviceOpening(object sender, CancelEventArgs e)
         {
-            OpenOptions();
+            updateDevicesList();
         }
 
-        private void OnBalloonClick(object sender, EventArgs e)
+        private void OnStartupClick(object sender, MouseEventArgs e)
         {
-            OpenOptions();
+            if (e.Button == MouseButtons.Left)
+            {
+                launchOnStartup = launchOnStartupMenuItem.Checked = !launchOnStartupMenuItem.Checked;
+            }
         }
 
-        private void OnQuitClick(object sender, EventArgs e)
+        private void OnAboutClick(object sender, MouseEventArgs e)
         {
-            Application.Exit();
+            // TODO: Fix this
+            if (e.Button == MouseButtons.Left)
+            {
+                appMenu.Close();
+                aboutMenuItem.Enabled = false;
+
+                Version version = new Version(Application.ProductVersion);
+
+                MessageBox.Show(Application.ProductName + " " + version.Major + "." + version.Minor + " © 2014 Abdelmadjid Hammou. All Rights Reserved.", "About", MessageBoxButtons.OK, MessageBoxIcon.None);
+            }
         }
 
-        private void OnOptionsOK(object _e)
+        private void OnQuitClick(object sender, MouseEventArgs e)
         {
-            Properties.Settings.Default.Save();
-            UpdateIcon();
+            if (e.Button == MouseButtons.Left)
+            {
+                Application.Exit();
+            }
         }
 
-        private void OnOptionsCancel(object _e)
+        private void OnDeviceClick(object sender, MouseEventArgs e)
         {
-           Properties.Settings.Default.Reload();
+            if (e.Button == MouseButtons.Left)
+            {
+                Properties.Settings defaultSettings = Properties.Settings.Default;
+
+                defaultSettings.controlledDevice = ((ToolStripMenuItem)sender).Name;
+                defaultSettings.Save();
+
+                UpdateIcon();
+            }
         }
 
         private void OnApplicationExit(object sender, EventArgs e)
@@ -213,8 +243,6 @@ namespace handsoff
             //Cleanup so that the icon will be removed when the application is closed
             appIcon.Visible = false;
         }
-
-
 
         private bool launchOnStartup
         {
