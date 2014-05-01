@@ -27,12 +27,12 @@ namespace handsoff
         public Main()
         {
             /* TODO:
-             *  - Device auto-detect
              *  - Launch on startup (UAC)
-             *  - Rework firstrun scenario
              *  - Clear startup registry entry on uninstall
-             *  - Clear TrayIcon on uninstall
              *  - Restore LeanDeploy
+             *  - Rework firstrun scenario
+             *  - Icon state for when no device is selected (yellow triangle warning sign)
+             *  - Clear TrayIcon on uninstall
              */
 
             Application.ApplicationExit += OnApplicationExit;
@@ -45,7 +45,7 @@ namespace handsoff
 
         private void UpdateIcon()
         {
-            if (IsDeviceEnabled(Properties.Settings.Default.controlledDevice))
+            if (IsDeviceEnabled(controlledDeviceID))
             {
                 appIcon.Icon = new Icon(Properties.Resources.TouchOn, SystemInformation.SmallIconSize);
             }
@@ -96,6 +96,8 @@ namespace handsoff
         {
             ListDevices();
 
+            DetectControlledDevice();
+
             controlledDeviceMenuItem.DropDown.Items.Clear();
 
             foreach(Device device in devices) 
@@ -104,11 +106,23 @@ namespace handsoff
                 deviceMenuItem.Name = device.instancePath;
                 deviceMenuItem.MouseDown += OnDeviceClick;
 
-                if (device.instancePath == Properties.Settings.Default.controlledDevice) {
+                if (device.instancePath == controlledDeviceID) {
                     deviceMenuItem.Checked = true;
                 }
 
                 controlledDeviceMenuItem.DropDown.Items.Add(deviceMenuItem);
+            }
+        }
+
+        private void DetectControlledDevice()
+        {
+            if (String.IsNullOrWhiteSpace(controlledDeviceID))
+            {
+                Device defaultDevice = devices.FirstOrDefault(s => (s.name.Contains("touch") && (s.name.Contains("screen") || s.name.Contains("display"))));
+
+                if (defaultDevice != null) {
+                    controlledDeviceID = defaultDevice.instancePath;
+                }
             }
         }
 
@@ -124,6 +138,11 @@ namespace handsoff
                 foreach (ManagementObject queryObj in searcher.Get())
                 {
                     devices.Add(new Device((String)queryObj["DeviceID"], (String)queryObj["Name"] + " (" + ((String)queryObj["Status"] == "OK" ? "Enabled" : "Disabled") + ")"));
+                }
+
+                if (devices.FirstOrDefault(s => s.instancePath == controlledDeviceID) == null) 
+                {
+                    controlledDeviceID = "";
                 }
 
                 devices.Sort();
@@ -185,7 +204,7 @@ namespace handsoff
         {
             if (e.Button == MouseButtons.Left) 
             {
-                ToggleDevice(Properties.Settings.Default.controlledDevice);
+                ToggleDevice(controlledDeviceID);
                 UpdateIcon();
             }
         }
@@ -229,12 +248,7 @@ namespace handsoff
         {
             if (e.Button == MouseButtons.Left)
             {
-                Properties.Settings defaultSettings = Properties.Settings.Default;
-
-                defaultSettings.controlledDevice = ((ToolStripMenuItem)sender).Name;
-                defaultSettings.Save();
-
-                UpdateIcon();
+                controlledDeviceID = ((ToolStripMenuItem)sender).Name;
             }
         }
 
@@ -275,6 +289,24 @@ namespace handsoff
                 }
 
                 registryKey.Close();
+            }
+        }
+
+        private string controlledDeviceID
+        {
+            get
+            {
+                return Properties.Settings.Default.controlledDevice;
+            }
+
+            set
+            {
+                Properties.Settings defaultSettings = Properties.Settings.Default;
+
+                defaultSettings.controlledDevice = value;
+                defaultSettings.Save();
+
+                UpdateIcon();
             }
         }
     }
