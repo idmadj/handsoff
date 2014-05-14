@@ -14,10 +14,12 @@ namespace handsoff
         [STAThread]
         static void Main()
         {
-            //LeanDeploy.Check();
+            LeanDeploy.BeforeUninstall += App.OnUninstall;
+            LeanDeploy.Check();
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new Main());
+            Application.Run(new App());
         }
     }
 }

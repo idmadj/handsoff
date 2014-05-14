@@ -9,10 +9,11 @@ using System.Management;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.Win32.TaskScheduler;
 
 namespace handsoff
 {
-    class Main : ApplicationContext
+    class App : ApplicationContext
     {
         private const string HID_GUID = "{745a17a0-74d3-11d0-b6fe-00a0c90f57da}";
 
@@ -24,21 +25,40 @@ namespace handsoff
         private ToolStripMenuItem quitMenuItem;
         private List<Device> devices;
 
-        public Main()
+        public App()
         {
             /* TODO:
-             *  - Launch on startup (UAC)
-             *  - Clear startup registry entry on uninstall
-             *  - Restore LeanDeploy
-             *  - Rework firstrun scenario
+             *  - Uninstall seems to fail
+             *  - Higher res icon for Start Screen
+             *  - Better icon for disabled state (white X in red circle)
              *  - Icon state for when no device is selected (yellow triangle warning sign)
+             *  - Rework firstrun scenario
              *  - Clear TrayIcon on uninstall
+             *  - ContextMenu remains open when focusing on about box
+             *  - 'on', 'off', and 'toggle' parameters
              */
 
             Application.ApplicationExit += OnApplicationExit;
 
             InitializeComponent();
             appIcon.Visible = true;
+
+            /*
+             * When device is selected or autodetected
+             *      if (!settings.tutorialComplete) {
+             *          if (String.IsNullOrWhiteSpace(controlledDeviceID)) {
+             *              [WARNING] "Touchscreen not found. Click or tap here to select the controlled device manually."
+             *          } else {
+             *              [INFO] "Simply click or tap this icon to toggle your touchscreen. Right-click for options."
+             *          }
+             *      }
+             * 
+             * OnLeftClick/OnClickErrorBalloonTip {
+             *      if (String.IsNullOrWhiteSpace(controlledDeviceID)) {
+             *          Open ContextStrip
+             *      }
+             * }
+             */
 
             appIcon.ShowBalloonTip(3, Application.ProductName, "Simply click or tap this icon to toggle your touchscreen.", ToolTipIcon.Info);
         }
@@ -137,7 +157,7 @@ namespace handsoff
 
                 foreach (ManagementObject queryObj in searcher.Get())
                 {
-                    devices.Add(new Device((String)queryObj["DeviceID"], (String)queryObj["Name"] + " (" + ((String)queryObj["Status"] == "OK" ? "Enabled" : "Disabled") + ")"));
+                    devices.Add(new Device((String)queryObj["DeviceID"], (String)queryObj["Name"]/* + " (" + ((String)queryObj["Status"] == "OK" ? "Enabled" : "Disabled") + ")"*/));
                 }
 
                 if (devices.FirstOrDefault(s => s.instancePath == controlledDeviceID) == null) 
@@ -155,7 +175,7 @@ namespace handsoff
 
         }
 
-        private bool IsDeviceEnabled(string deviceID)
+        private static bool IsDeviceEnabled(string deviceID)
         {
             bool returnValue = false;
 
@@ -183,7 +203,7 @@ namespace handsoff
             return returnValue;
         }
 
-        private void EnableDevice(string deviceID, bool enabled = true)
+        private static void EnableDevice(string deviceID, bool enabled = true)
         {
             if (!String.IsNullOrWhiteSpace(deviceID))
             {
@@ -191,7 +211,7 @@ namespace handsoff
             }
         }
 
-        private bool ToggleDevice(string deviceID)
+        private static bool ToggleDevice(string deviceID)
         {
             bool deviceEnabled = !IsDeviceEnabled(deviceID);
 
@@ -218,7 +238,8 @@ namespace handsoff
         {
             if (e.Button == MouseButtons.Left)
             {
-                launchOnStartup = launchOnStartupMenuItem.Checked = !launchOnStartupMenuItem.Checked;
+                launchOnStartup = !launchOnStartupMenuItem.Checked;
+                launchOnStartupMenuItem.Checked = launchOnStartup;
             }
         }
 
@@ -233,6 +254,7 @@ namespace handsoff
                 Version version = new Version(Application.ProductVersion);
 
                 MessageBox.Show(Application.ProductName + " " + version.Major + "." + version.Minor + " © 2014 Abdelmadjid Hammou. All Rights Reserved.", "About", MessageBoxButtons.OK, MessageBoxIcon.None);
+                aboutMenuItem.Enabled = true;
             }
         }
 
@@ -258,38 +280,9 @@ namespace handsoff
             appIcon.Visible = false;
         }
 
-        private bool launchOnStartup
+        public static void OnUninstall()
         {
-            get 
-            {
-                bool returnValue = false;
-                RegistryKey registryKey = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run");
-
-                if (registryKey.GetValue(Application.ProductName) != null)
-                {
-                    returnValue = true;
-                }
-
-                registryKey.Close();
-
-                return returnValue;
-            }
-
-            set 
-            {
-                RegistryKey registryKey = Registry.CurrentUser.CreateSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run");
-
-                if (value) 
-                {
-                    registryKey.SetValue(Application.ProductName, LeanDeploy.installPath);
-                } 
-                else 
-                {
-                    registryKey.DeleteValue(Application.ProductName, false);
-                }
-
-                registryKey.Close();
-            }
+            launchOnStartup = false;
         }
 
         private string controlledDeviceID
@@ -309,9 +302,55 @@ namespace handsoff
                 UpdateIcon();
             }
         }
+
+        private static bool launchOnStartup
+        {
+            get
+            {
+                bool returnValue = false;
+
+                TaskService taskService = new TaskService();
+
+                if (taskService.GetTask(Application.ProductName) != null)
+                {
+                    returnValue = true;
+                }
+
+                return returnValue;
+            }
+
+            set
+            {
+                TaskService taskService = new TaskService();
+
+                if (value)
+                {
+                    TaskDefinition taskDefinition = taskService.NewTask();
+                    taskDefinition.RegistrationInfo.Description = "Launches " + Application.ProductName + " on startup.";
+
+                    taskDefinition.Triggers.Add(new LogonTrigger());
+
+                    taskDefinition.Principal.RunLevel = TaskRunLevel.Highest;
+
+                    taskDefinition.Settings.DisallowStartIfOnBatteries = false;
+                    taskDefinition.Settings.StopIfGoingOnBatteries = false;
+                    taskDefinition.Settings.AllowHardTerminate = false;
+                    taskDefinition.Settings.ExecutionTimeLimit = TimeSpan.Zero;
+
+                    taskDefinition.Actions.Add(new ExecAction("\"" + LeanDeploy.installPath + "\""));
+
+                    taskService.RootFolder.RegisterTaskDefinition(Application.ProductName, taskDefinition);
+                }
+                else
+                {
+                    taskService.RootFolder.DeleteTask(Application.ProductName);
+                }
+
+            }
+        }
     }
 
-    public delegate void BasicEvent(Object _e);
+    //public delegate void BasicEvent(Object _e);
 
     public class Device : IComparable<Device>
     {
