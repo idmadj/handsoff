@@ -16,22 +16,25 @@ namespace handsoff
     class LeanDeploy
     {
         private const string UNINSTALL_PARAM = "uninstall";
+        private const string SILENT_PARAM = "silent";
 
         public delegate void LDEvent();
 
         public static event LDEvent BeforeInstall;
         public static event LDEvent AfterInstall;
         public static event LDEvent BeforeUninstall;
+        public static event LDEvent ProcessesKilled;
 
         private static string assemblyName;
         private static string executablePath;
         private static string installFolder;
-        public static string installPath;
+        public static string installPath { get { return Path.Combine(installFolder, assemblyName + ".exe"); } }
 
         /* TODO
          *  - Error catching
-         *  - Convert installPath to getter setter
-         *  - Uninstall confirmation MsgBox?
+         *   - "try" low-level operations
+         *   - don't delete/modify stuff that doesn't exist
+         *   - verify that objects are valid before executing actions on them
          */
 
         static LeanDeploy()
@@ -39,12 +42,11 @@ namespace handsoff
             assemblyName = Assembly.GetExecutingAssembly().GetName().Name;
             executablePath = Assembly.GetExecutingAssembly().Location;
             installFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Application.ProductName);
-            installPath = Path.Combine(installFolder, assemblyName + ".exe");
         }
 
         public static void Check()
         {
-            if (Array.Find(Environment.GetCommandLineArgs(), e => String.Equals(e, UNINSTALL_PARAM, StringComparison.OrdinalIgnoreCase)) != null)
+            if (CheckParam(UNINSTALL_PARAM))
             {
                 Uninstall();
                 Environment.Exit(0);
@@ -76,15 +78,23 @@ namespace handsoff
 
         private static void Uninstall()
         {
-            if (BeforeUninstall != null)
+            if (CheckParam(SILENT_PARAM) ||
+                MessageBox.Show("Are you sure you want to uninstall " + Application.ProductName + "?",
+                                Application.ProductName + " Uninstall",
+                                MessageBoxButtons.YesNo,
+                                MessageBoxIcon.Question,
+                                MessageBoxDefaultButton.Button2) == DialogResult.Yes)
             {
-                BeforeUninstall();
-            }
+                if (BeforeUninstall != null)
+                {
+                    BeforeUninstall();
+                }
 
-            RemoveSettings();
-            RemoveShortcut();
-            RemoveUninstallEntry();
-            RemoveExecutable();
+                RemoveSettings();
+                RemoveShortcut();
+                RemoveUninstallEntry();
+                RemoveExecutable();
+            }
         }
 
         private static bool isInstalled
@@ -111,15 +121,16 @@ namespace handsoff
 
         private static void RemoveExecutable()
         {
-            KillExecutable();
+            KillProcesses();
 
             ProcessStartInfo info = new ProcessStartInfo();
-            info.Arguments="/C choice /C Y /N /D Y /T 3 & rmdir \"" + installFolder + "\" /s /q";
-            info.WindowStyle=ProcessWindowStyle.Hidden;
-            info.CreateNoWindow=true;
-            info.FileName="cmd.exe";
+            info.Arguments = "/C choice /C Y /N /D Y /T 3 & rmdir \"" + installFolder + "\" /s /q";
+            info.WindowStyle = ProcessWindowStyle.Hidden;
+            info.CreateNoWindow = true;
+            info.FileName = "cmd.exe";
             Process.Start(info);
 
+            // Make sure to quit if we are running the installed executable so it gets deleted by the timed action above
             if (isInstalledExecutable) {
                 Environment.Exit(0);
             }
@@ -159,6 +170,7 @@ namespace handsoff
             registryKey.SetValue("NoModify", 1, RegistryValueKind.DWord);
             registryKey.SetValue("NoRepair", 1, RegistryValueKind.DWord);
             registryKey.SetValue("Publisher", Application.CompanyName);
+            registryKey.SetValue("EstimatedSize", Math.Round(new System.IO.FileInfo(executablePath).Length / 1024f), RegistryValueKind.DWord);
             registryKey.SetValue("UninstallString", "\"" + installPath + "\" uninstall");
             registryKey.SetValue("VersionMajor", version.Major, RegistryValueKind.DWord);
             registryKey.SetValue("VersionMinor", version.Minor, RegistryValueKind.DWord);
@@ -177,7 +189,7 @@ namespace handsoff
             Environment.Exit(0);
         }
 
-        private static void KillExecutable()
+        private static void KillProcesses()
         {
             Process currentProcess = Process.GetCurrentProcess();
 
@@ -189,6 +201,11 @@ namespace handsoff
                     process.Kill();
                 }
             }
+
+            if (ProcessesKilled != null)
+            {
+                ProcessesKilled();
+            }
         }
 
         private static void RemoveSettings()
@@ -199,6 +216,11 @@ namespace handsoff
             {
                 Directory.Delete(settingsFolder, true);
             }
+        }
+
+        private static bool CheckParam(string param)
+        {
+            return Array.Find(Environment.GetCommandLineArgs(), e => String.Equals(e, param, StringComparison.OrdinalIgnoreCase)) != null;
         }
     }
 }

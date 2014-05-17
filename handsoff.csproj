@@ -47,12 +47,13 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <Prefer32Bit>false</Prefer32Bit>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <PropertyGroup>
-    <ApplicationIcon>Resources\TouchOn.ico</ApplicationIcon>
+    <ApplicationIcon>icon_on.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Microsoft.Win32.TaskScheduler">
@@ -75,6 +76,9 @@
     <Compile Include="DisableHardware.cs" />
     <Compile Include="LeanDeploy.cs" />
     <Compile Include="App.cs" />
+    <Compile Include="lib\TrayIconBuster\LP_Pinner.cs" />
+    <Compile Include="lib\TrayIconBuster\LP_Process.cs" />
+    <Compile Include="lib\TrayIconBuster\TrayIconBuster.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="Properties\Resources.resx">
@@ -144,6 +148,10 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="FodyWeavers.xml" />
+    <Content Include="icon_on.ico" />
+    <None Include="Resources\icon_warn.ico" />
+    <None Include="Resources\icon_on.ico" />
+    <None Include="Resources\icon_off.ico" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Import Project="Fody.targets" />

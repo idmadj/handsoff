@@ -6,6 +6,7 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Management;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -24,55 +25,26 @@ namespace handsoff
         private ToolStripMenuItem aboutMenuItem;
         private ToolStripMenuItem quitMenuItem;
         private List<Device> devices;
+        private bool displayTutorial;
 
         public App()
         {
             /* TODO:
-             *  - Uninstall seems to fail
-             *  - Higher res icon for Start Screen
-             *  - Better icon for disabled state (white X in red circle)
-             *  - Icon state for when no device is selected (yellow triangle warning sign)
-             *  - Rework firstrun scenario
-             *  - Clear TrayIcon on uninstall
-             *  - ContextMenu remains open when focusing on about box
-             *  - 'on', 'off', and 'toggle' parameters
+             *  - Error handling (mostly for device manager actions, make them fail silently)
+             *   - "try" low-level operations
+             *   - don't delete/modify stuff that doesn't exist
+             *   - verify that objects are valid before executing actions on them
+             *  - Restore LeanDeploy
              */
 
             Application.ApplicationExit += OnApplicationExit;
 
+            displayTutorial = String.IsNullOrWhiteSpace(controlledDeviceID);
+
             InitializeComponent();
             appIcon.Visible = true;
 
-            /*
-             * When device is selected or autodetected
-             *      if (!settings.tutorialComplete) {
-             *          if (String.IsNullOrWhiteSpace(controlledDeviceID)) {
-             *              [WARNING] "Touchscreen not found. Click or tap here to select the controlled device manually."
-             *          } else {
-             *              [INFO] "Simply click or tap this icon to toggle your touchscreen. Right-click for options."
-             *          }
-             *      }
-             * 
-             * OnLeftClick/OnClickErrorBalloonTip {
-             *      if (String.IsNullOrWhiteSpace(controlledDeviceID)) {
-             *          Open ContextStrip
-             *      }
-             * }
-             */
-
-            appIcon.ShowBalloonTip(3, Application.ProductName, "Simply click or tap this icon to toggle your touchscreen.", ToolTipIcon.Info);
-        }
-
-        private void UpdateIcon()
-        {
-            if (IsDeviceEnabled(controlledDeviceID))
-            {
-                appIcon.Icon = new Icon(Properties.Resources.TouchOn, SystemInformation.SmallIconSize);
-            }
-            else
-            {
-                appIcon.Icon = new Icon(Properties.Resources.TouchOff, SystemInformation.SmallIconSize);
-            }
+            DisplayHelp();
         }
 
         private void InitializeComponent()
@@ -94,7 +66,7 @@ namespace handsoff
 
             controlledDeviceMenuItem.Text = "Controlled device";
             controlledDeviceMenuItem.DropDown.Opening += OnControlledDeviceOpening;
-            updateDevicesList();
+            UpdateDevicesList();
 
             launchOnStartupMenuItem.Text = "Launch on startup";
             launchOnStartupMenuItem.Checked = launchOnStartup;
@@ -112,7 +84,7 @@ namespace handsoff
             UpdateIcon();
         }
 
-        private void updateDevicesList()
+        private void UpdateDevicesList()
         {
             ListDevices();
 
@@ -207,7 +179,14 @@ namespace handsoff
         {
             if (!String.IsNullOrWhiteSpace(deviceID))
             {
-                DisableHardware.DisableDevice(n => n.ToUpperInvariant().Contains(deviceID), !enabled);
+                try
+                {
+                    DisableHardware.DisableDevice(n => n.ToUpperInvariant().Contains(deviceID), !enabled);
+                }
+                catch (ApplicationException e)
+                {
+                    Console.WriteLine("An error occurred while enabling/disabling a device: " + e.Message);
+                }
             }
         }
 
@@ -220,18 +199,60 @@ namespace handsoff
             return deviceEnabled;
         }
 
+        private void DisplayHelp()
+        {
+            if (String.IsNullOrWhiteSpace(controlledDeviceID))
+            {
+                appIcon.ShowBalloonTip(5, Application.ProductName, "Touchscreen not found. Click or tap here to select the controlled device manually.", ToolTipIcon.Warning);
+            }
+            else if (displayTutorial)
+            {
+                appIcon.ShowBalloonTip(5, Application.ProductName, "Simply click or tap this icon to toggle your touchscreen. Right-click for options.", ToolTipIcon.Info);
+                displayTutorial = false;
+            }
+        }
+
+        private void UpdateIcon()
+        {
+            if (String.IsNullOrWhiteSpace(controlledDeviceID))
+            {
+                appIcon.Icon = new Icon(Properties.Resources.icon_warn, SystemInformation.SmallIconSize);
+            }
+            else if (IsDeviceEnabled(controlledDeviceID))
+            {
+                appIcon.Icon = new Icon(Properties.Resources.icon_on, SystemInformation.SmallIconSize);
+            }
+            else
+            {
+                appIcon.Icon = new Icon(Properties.Resources.icon_off, SystemInformation.SmallIconSize);
+            }
+        }
+
+        private void ShowAppMenu()
+        {
+            MethodInfo mi = typeof(NotifyIcon).GetMethod("ShowContextMenu", BindingFlags.Instance | BindingFlags.NonPublic);
+            mi.Invoke(appIcon, null);
+        }
+
         private void OnAppClick(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left) 
             {
-                ToggleDevice(controlledDeviceID);
-                UpdateIcon();
+                if (String.IsNullOrWhiteSpace(controlledDeviceID))
+                {
+                    ShowAppMenu();
+                }
+                else
+                {
+                    ToggleDevice(controlledDeviceID);
+                    UpdateIcon();
+                }
             }
         }
 
         private void OnControlledDeviceOpening(object sender, CancelEventArgs e)
         {
-            updateDevicesList();
+            UpdateDevicesList();
         }
 
         private void OnStartupClick(object sender, MouseEventArgs e)
@@ -245,15 +266,15 @@ namespace handsoff
 
         private void OnAboutClick(object sender, MouseEventArgs e)
         {
-            // TODO: Fix this
             if (e.Button == MouseButtons.Left)
             {
                 appMenu.Close();
                 aboutMenuItem.Enabled = false;
 
                 Version version = new Version(Application.ProductVersion);
+                int year = DateTime.Now.Year;
 
-                MessageBox.Show(Application.ProductName + " " + version.Major + "." + version.Minor + " © 2014 Abdelmadjid Hammou. All Rights Reserved.", "About", MessageBoxButtons.OK, MessageBoxIcon.None);
+                MessageBox.Show(Application.ProductName + " " + version.Major + "." + version.Minor + " © 2014" + (year > 2014 ? " - " + year : "") + " Abdelmadjid Hammou.\nAll Rights Reserved.", "About", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 aboutMenuItem.Enabled = true;
             }
         }
@@ -271,6 +292,7 @@ namespace handsoff
             if (e.Button == MouseButtons.Left)
             {
                 controlledDeviceID = ((ToolStripMenuItem)sender).Name;
+                DisplayHelp();
             }
         }
 
@@ -283,6 +305,11 @@ namespace handsoff
         public static void OnUninstall()
         {
             launchOnStartup = false;
+        }
+
+        public static void OnProcessesKilled()
+        {
+            TrayIconBuster.TrayIconBuster.RemovePhantomIcons();
         }
 
         private string controlledDeviceID
@@ -343,14 +370,15 @@ namespace handsoff
                 }
                 else
                 {
-                    taskService.RootFolder.DeleteTask(Application.ProductName);
+                    if (taskService.GetTask(Application.ProductName) != null)
+                    {
+                        taskService.RootFolder.DeleteTask(Application.ProductName);
+                    }
                 }
 
             }
         }
     }
-
-    //public delegate void BasicEvent(Object _e);
 
     public class Device : IComparable<Device>
     {
