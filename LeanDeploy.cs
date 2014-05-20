@@ -30,13 +30,6 @@ namespace handsoff
         private static string installFolder;
         public static string installPath { get { return Path.Combine(installFolder, assemblyName + ".exe"); } }
 
-        /* TODO
-         *  - Error catching
-         *   - "try" low-level operations
-         *   - don't delete/modify stuff that doesn't exist
-         *   - verify that objects are valid before executing actions on them
-         */
-
         static LeanDeploy()
         {
             assemblyName = Assembly.GetExecutingAssembly().GetName().Name;
@@ -48,12 +41,30 @@ namespace handsoff
         {
             if (CheckParam(UNINSTALL_PARAM))
             {
-                Uninstall();
+                try
+                {
+                    Uninstall();
+                }
+                catch (Exception e)
+                {
+                    MessageBox.Show("Uninstallation failed: " + e.Message, Application.ProductName + " Uninstall", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+
                 Environment.Exit(0);
             }
             else if (!isInstalledExecutable)
             {
-                Install();
+                try
+                {
+                    Install();
+                }
+                catch (Exception e)
+                {
+                    MessageBox.Show("Installation failed: " + e.Message, Application.ProductName + " Install", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    Uninstall();
+                    Environment.Exit(0);
+                }
+
                 LaunchExecutable();
             }
         }

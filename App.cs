@@ -1,20 +1,24 @@
-﻿using Microsoft.Win32;
+﻿//#define DEMO
+
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Management;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Permissions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32.TaskScheduler;
 
 namespace handsoff
 {
-    class App : ApplicationContext
+    class App : ApplicationContext /*Form*/
     {
         private const string HID_GUID = "{745a17a0-74d3-11d0-b6fe-00a0c90f57da}";
 
@@ -26,26 +30,58 @@ namespace handsoff
         private ToolStripMenuItem quitMenuItem;
         private List<Device> devices;
         private bool displayTutorial;
+        private Random rng;
 
         public App()
         {
             /* TODO:
-             *  - Error handling (mostly for device manager actions, make them fail silently)
-             *   - "try" low-level operations
-             *   - don't delete/modify stuff that doesn't exist
-             *   - verify that objects are valid before executing actions on them
-             *  - Restore LeanDeploy
+             *  - Demo version
+             *  - Isolate/cleanup toggle/initial state (It may be trying to be too smart right now. Consider only acting on a session basis, no persistent data)
+             *  - Handle devices change system event
              */
 
             Application.ApplicationExit += OnApplicationExit;
 
+            /*this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None;
+            this.ShowInTaskbar = false; 
+            this.Load += OnLoad;*/
+
             displayTutorial = String.IsNullOrWhiteSpace(controlledDeviceID);
+
+            rng = new Random();
 
             InitializeComponent();
             appIcon.Visible = true;
 
             DisplayHelp();
         }
+
+        /*private void OnLoad(object sender, EventArgs e)
+        {
+            Size = new Size(0, 0);
+        }
+
+
+        private const int WM_DEVICECHANGE = 0x0219;
+        private const int DBT_DEVICEARRIVAL = 0x8000; // system detected a new device
+        private const int DBT_DEVICEREMOVECOMPLETE = 0x8004; //device was removed
+        private const int DBT_DEVNODES_CHANGED = 0x0007; //device changed
+
+        [SecurityPermission(SecurityAction.LinkDemand, Flags = SecurityPermissionFlag.UnmanagedCode)]
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_DEVICECHANGE && m.WParam.ToInt32() == DBT_DEVNODES_CHANGED)
+            {
+                ScheduleUpdate();
+            }
+
+            base.WndProc(ref m);
+        }
+
+        private void ScheduleUpdate()
+        {
+
+        }*/
 
         private void InitializeComponent()
         {
@@ -68,8 +104,12 @@ namespace handsoff
             controlledDeviceMenuItem.DropDown.Opening += OnControlledDeviceOpening;
             UpdateDevicesList();
 
+#if (DEMO)
+            launchOnStartupMenuItem.Text = "Launch on startup (full version only)";
+#else
             launchOnStartupMenuItem.Text = "Launch on startup";
             launchOnStartupMenuItem.Checked = launchOnStartup;
+#endif
             launchOnStartupMenuItem.MouseDown += OnStartupClick;
 
             aboutMenuItem.Text = "About...";
@@ -80,6 +120,12 @@ namespace handsoff
 
             appMenu.ResumeLayout(false);
             appIcon.ContextMenuStrip = appMenu;
+
+            if (IsDeviceEnabled(controlledDeviceID) != null) 
+            {
+                SaveDeviceInitialState();
+            }
+            RestoreDeviceToggleState();
 
             UpdateIcon();
         }
@@ -98,7 +144,14 @@ namespace handsoff
                 deviceMenuItem.Name = device.instancePath;
                 deviceMenuItem.MouseDown += OnDeviceClick;
 
-                if (device.instancePath == controlledDeviceID) {
+                if (device.name.IndexOf("touch", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    Font itemFont = deviceMenuItem.Font;
+                    deviceMenuItem.Font = new Font(itemFont, itemFont.Style | FontStyle.Bold);
+                }
+
+                if (device.instancePath == controlledDeviceID)
+                {
                     deviceMenuItem.Checked = true;
                 }
 
@@ -112,7 +165,8 @@ namespace handsoff
             {
                 Device defaultDevice = devices.FirstOrDefault(s => (s.name.Contains("touch") && (s.name.Contains("screen") || s.name.Contains("display"))));
 
-                if (defaultDevice != null) {
+                if (defaultDevice != null)
+                {
                     controlledDeviceID = defaultDevice.instancePath;
                 }
             }
@@ -132,24 +186,25 @@ namespace handsoff
                     devices.Add(new Device((String)queryObj["DeviceID"], (String)queryObj["Name"]/* + " (" + ((String)queryObj["Status"] == "OK" ? "Enabled" : "Disabled") + ")"*/));
                 }
 
-                if (devices.FirstOrDefault(s => s.instancePath == controlledDeviceID) == null) 
+                /*if (devices.FirstOrDefault(s => s.instancePath == controlledDeviceID) == null) 
                 {
+                    // Clear the controleld device if it isn't found
                     controlledDeviceID = "";
-                }
+                }*/
 
                 devices.Sort();
 
             }
-            catch (ManagementException e)
+            catch (Exception e)
             {
-                MessageBox.Show("An error occurred while querying for WMI data: " + e.Message);
+                Console.WriteLine("An error occurred while querying for WMI data: " + e.Message);
             }
 
         }
 
-        private static bool IsDeviceEnabled(string deviceID)
+        private static bool? IsDeviceEnabled(string deviceID)
         {
-            bool returnValue = false;
+            bool? returnValue = null;
 
             if (!String.IsNullOrWhiteSpace(deviceID)) 
             {
@@ -157,7 +212,14 @@ namespace handsoff
                 {
                     ManagementObjectSearcher searcher = new ManagementObjectSearcher("root\\CIMV2", "SELECT * FROM Win32_PnPEntity Where DeviceID = '" + deviceID.Replace("\\", "\\\\") + "'");
 
-                    foreach (ManagementObject queryObj in searcher.Get())
+                    ManagementObjectCollection foundDevices = searcher.Get();
+
+                    if (foundDevices.Count > 0) 
+                    {
+                        returnValue = false;
+                    }
+
+                    foreach (ManagementObject queryObj in foundDevices)
                     {
                         if ((String)queryObj["Status"] == "OK")
                         {
@@ -166,8 +228,34 @@ namespace handsoff
                         break;
                     }
                 }
-                catch (ManagementException e)
+                catch (Exception e)
                 {
+                    returnValue = null;
+                    Console.WriteLine("An error occurred while querying for WMI data: " + e.Message);
+                }
+            }
+
+            return returnValue;
+        }
+
+        private static bool? IsDevicePresent(string deviceID)
+        {
+            bool? returnValue = false;
+
+            if (!String.IsNullOrWhiteSpace(deviceID))
+            {
+                try
+                {
+                    ManagementObjectSearcher searcher = new ManagementObjectSearcher("root\\CIMV2", "SELECT * FROM Win32_PnPEntity Where DeviceID = '" + deviceID.Replace("\\", "\\\\") + "'");
+                    
+                    if (searcher.Get().Count > 0) 
+                    {
+                        returnValue = true;
+                    }
+                }
+                catch (Exception e)
+                {
+                    returnValue = null;
                     Console.WriteLine("An error occurred while querying for WMI data: " + e.Message);
                 }
             }
@@ -183,7 +271,7 @@ namespace handsoff
                 {
                     DisableHardware.DisableDevice(n => n.ToUpperInvariant().Contains(deviceID), !enabled);
                 }
-                catch (ApplicationException e)
+                catch (Exception e)
                 {
                     Console.WriteLine("An error occurred while enabling/disabling a device: " + e.Message);
                 }
@@ -192,7 +280,7 @@ namespace handsoff
 
         private static bool ToggleDevice(string deviceID)
         {
-            bool deviceEnabled = !IsDeviceEnabled(deviceID);
+            bool deviceEnabled = !(IsDeviceEnabled(deviceID) ?? false);
 
             EnableDevice(deviceID, deviceEnabled);
 
@@ -201,7 +289,7 @@ namespace handsoff
 
         private void DisplayHelp()
         {
-            if (String.IsNullOrWhiteSpace(controlledDeviceID))
+            if (String.IsNullOrWhiteSpace(controlledDeviceID) || !(IsDevicePresent(controlledDeviceID) ?? false))
             {
                 appIcon.ShowBalloonTip(5, Application.ProductName, "Touchscreen not found. Click or tap here to select the controlled device manually.", ToolTipIcon.Warning);
             }
@@ -214,11 +302,11 @@ namespace handsoff
 
         private void UpdateIcon()
         {
-            if (String.IsNullOrWhiteSpace(controlledDeviceID))
+            if (String.IsNullOrWhiteSpace(controlledDeviceID) || !(IsDevicePresent(controlledDeviceID) ?? false))
             {
                 appIcon.Icon = new Icon(Properties.Resources.icon_warn, SystemInformation.SmallIconSize);
             }
-            else if (IsDeviceEnabled(controlledDeviceID))
+            else if (IsDeviceEnabled(controlledDeviceID) ?? false)
             {
                 appIcon.Icon = new Icon(Properties.Resources.icon_on, SystemInformation.SmallIconSize);
             }
@@ -228,25 +316,109 @@ namespace handsoff
             }
         }
 
+        public static void SaveDeviceInitialState()
+        {
+            Properties.Settings defaultSettings = Properties.Settings.Default;
+
+            string currentDevice = defaultSettings.controlledDevice;
+
+            if (!String.IsNullOrWhiteSpace(currentDevice))
+            {
+                defaultSettings.controlledDeviceInitialState = IsDeviceEnabled(currentDevice);
+                defaultSettings.Save();
+            }
+        }
+
+        public static void RestoreDeviceInitialState()
+        {
+            Properties.Settings defaultSettings = Properties.Settings.Default;
+
+            string currentDevice = defaultSettings.controlledDevice;
+
+            if (!String.IsNullOrWhiteSpace(currentDevice))
+            {
+                bool? deviceState = defaultSettings.controlledDeviceInitialState;
+
+                if (deviceState != null)
+                {
+                    EnableDevice(currentDevice, (deviceState ?? false));
+                }
+            }
+        }
+
+        public static void SaveDeviceToggleState()
+        {
+            Properties.Settings defaultSettings = Properties.Settings.Default;
+
+            string currentDevice = defaultSettings.controlledDevice;
+
+            if (!String.IsNullOrWhiteSpace(currentDevice))
+            {
+                defaultSettings.controlledDeviceToggleState = IsDeviceEnabled(currentDevice);
+                defaultSettings.Save();
+            }
+        }
+
+        public static void RestoreDeviceToggleState()
+        {
+            Properties.Settings defaultSettings = Properties.Settings.Default;
+
+            string currentDevice = defaultSettings.controlledDevice;
+
+            if (!String.IsNullOrWhiteSpace(currentDevice))
+            {
+                bool? deviceState = defaultSettings.controlledDeviceToggleState;
+
+                if (deviceState != null)
+                {
+                    EnableDevice(currentDevice, (deviceState ?? false));
+                }
+            }
+        }
+
         private void ShowAppMenu()
         {
             MethodInfo mi = typeof(NotifyIcon).GetMethod("ShowContextMenu", BindingFlags.Instance | BindingFlags.NonPublic);
             mi.Invoke(appIcon, null);
         }
 
+#if (DEMO)
+        private void ShowFullVersionPopup()
+        {
+            appMenu.Close();
+            aboutMenuItem.Enabled = false;
+
+            if (MessageBox.Show("Enjoying HandsOff's trial version?\n\nPlease consider purchasing the full version, which is free of this annoying popup and can also be setup to run on startup.\n\nIt's only $1.89, and you'll help support the development of awesome software!\n\nReady for the full version?", "HandsOff Full", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+            {
+                Process.Start("http://www.secretfloor.com");
+            }
+
+            aboutMenuItem.Enabled = true;
+        }
+#endif
+
         private void OnAppClick(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left) 
             {
-                if (String.IsNullOrWhiteSpace(controlledDeviceID))
+                if (String.IsNullOrWhiteSpace(controlledDeviceID) || !(IsDevicePresent(controlledDeviceID) ?? false))
                 {
                     ShowAppMenu();
                 }
                 else
                 {
                     ToggleDevice(controlledDeviceID);
-                    UpdateIcon();
+                    SaveDeviceToggleState();
+
+#if (DEMO)
+                    if (rng.Next(5) < 1) 
+                    {
+                        ShowFullVersionPopup();
+                    }
+#endif
                 }
+
+                UpdateIcon();
             }
         }
 
@@ -259,8 +431,12 @@ namespace handsoff
         {
             if (e.Button == MouseButtons.Left)
             {
+#if (DEMO)
+                ShowFullVersionPopup();
+#else
                 launchOnStartup = !launchOnStartupMenuItem.Checked;
                 launchOnStartupMenuItem.Checked = launchOnStartup;
+#endif
             }
         }
 
@@ -300,11 +476,17 @@ namespace handsoff
         {
             //Cleanup so that the icon will be removed when the application is closed
             appIcon.Visible = false;
+
+            SaveDeviceToggleState();
+            RestoreDeviceInitialState();
         }
 
         public static void OnUninstall()
         {
+            RestoreDeviceInitialState();
+#if (!DEMO)
             launchOnStartup = false;
+#endif
         }
 
         public static void OnProcessesKilled()
@@ -323,13 +505,24 @@ namespace handsoff
             {
                 Properties.Settings defaultSettings = Properties.Settings.Default;
 
-                defaultSettings.controlledDevice = value;
-                defaultSettings.Save();
+                string currentDevice = defaultSettings.controlledDevice;
+
+                if (currentDevice != value && (IsDevicePresent(value) ?? false))
+                {
+                    RestoreDeviceInitialState();
+
+                    defaultSettings.controlledDevice = value;
+                    defaultSettings.Save();
+
+                    SaveDeviceInitialState();
+                    SaveDeviceToggleState();
+                }
 
                 UpdateIcon();
             }
         }
 
+#if (!DEMO)
         private static bool launchOnStartup
         {
             get
@@ -338,9 +531,16 @@ namespace handsoff
 
                 TaskService taskService = new TaskService();
 
-                if (taskService.GetTask(Application.ProductName) != null)
+                try
                 {
-                    returnValue = true;
+                    if (taskService.GetTask(Application.ProductName) != null)
+                    {
+                        returnValue = true;
+                    }
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("An error occured while trying to read a scheduled task: " + e.Message);
                 }
 
                 return returnValue;
@@ -366,18 +566,33 @@ namespace handsoff
 
                     taskDefinition.Actions.Add(new ExecAction("\"" + LeanDeploy.installPath + "\""));
 
-                    taskService.RootFolder.RegisterTaskDefinition(Application.ProductName, taskDefinition);
+                    try 
+                    {
+                        taskService.RootFolder.RegisterTaskDefinition(Application.ProductName, taskDefinition);
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine("An error occured while trying to register a scheduled task: " + e.Message);
+                    }
                 }
                 else
                 {
-                    if (taskService.GetTask(Application.ProductName) != null)
+                    try
                     {
-                        taskService.RootFolder.DeleteTask(Application.ProductName);
+                        if (taskService.GetTask(Application.ProductName) != null)
+                        {
+                            taskService.RootFolder.DeleteTask(Application.ProductName);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine("An error occured while trying to delete a scheduled task: " + e.Message);
                     }
                 }
 
             }
         }
+#endif
     }
 
     public class Device : IComparable<Device>
