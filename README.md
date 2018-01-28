@@ -3,7 +3,7 @@ HandsOff
 
 HandsOff is a configurable touchscreen toggle that sits in the notification area (the "tray"). 
 
-On Windows 8 tablets with both a touchscreen and an active digitizer (Wacom or other), only the touchscreen will be disabled. This is especially useful when drawing, where it'll prevent touch from interfering with pen input.
+On Windows tablets with both a touchscreen and an active digitizer (Wacom or other), only the touchscreen will be disabled. This is especially useful when drawing, where it'll prevent touch from interfering with pen input.
 
 As the togglable input device is configurable, it can also be used for other stuff, like disabling pen input while leaving touch active, for instance.
 
@@ -21,8 +21,7 @@ Right-click the icon and select 'Quit' to quit (mindblowing, I know).
 
 Supported Platforms
 ===================
- - Windows 8
- - Windows 7 or Vista with .NET Framework 4.0 installed.
+ - Windows 7/8/10 or Vista with .NET Framework 4.0 installed.
 
 
 Getting your device's instance path
